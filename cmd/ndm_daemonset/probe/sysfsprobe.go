@@ -24,10 +24,15 @@ https://www.kernel.org/doc/Documentation/block/queue-sysfs.txt
 package probe
 
 import (
+	"fmt"
+	"path/filepath"
+	"time"
+
 	"github.com/openebs/node-disk-manager/blockdevice"
 	"github.com/openebs/node-disk-manager/cmd/ndm_daemonset/controller"
 	"github.com/openebs/node-disk-manager/pkg/sysfs"
 	"github.com/openebs/node-disk-manager/pkg/util"
+	"github.com/openebs/node-disk-manager/pkg/watchman"
 	"k8s.io/klog"
 )
 
@@ -70,6 +75,7 @@ var sysfsProbeRegister = func() {
 // sysfsProbe fills the logical sector size,
 // physical sector size, drive type(ssd or hdd) of the disk
 type sysfsProbe struct {
+	watchman *watchman.Watchman
 }
 
 func newSysFSProbe() *sysfsProbe {
@@ -77,7 +83,10 @@ func newSysFSProbe() *sysfsProbe {
 }
 
 // It is part of probe interface. Hence, empty implementation.
-func (cp *sysfsProbe) Start() {}
+func (cp *sysfsProbe) Start() {
+	cp.watchman = watchman.New(watchman.WithPollInterval(10 * time.Second))
+	cp.listenSizeChanges()
+}
 
 // FillBlockDeviceDetails updates the logical sector size,
 // physical sector size, drive type(ssd or hdd) of the disk
@@ -163,4 +172,35 @@ func (cp *sysfsProbe) FillBlockDeviceDetails(blockDevice *blockdevice.BlockDevic
 		klog.V(4).Infof("blockdevice path: %s drive type :%s filled by sysfs probe.",
 			blockDevice.DevPath, blockDevice.DeviceAttributes.DriveType)
 	}
+
+	// check if the device is being monitored by for size changes.
+	// add if not being watched
+	if len(cp.watchman.Find(func(f *watchman.File) bool {
+		return f.GetTag() == blockDevice.DevPath
+	})) == 0 {
+		newFile, err := watchman.NewFile(filepath.Join(blockDevice.SysPath, "size"),
+			watchman.WithReader(watchman.ReadFile),
+			watchman.WithTag(blockDevice.DevPath))
+		if err != nil {
+			klog.Error("failed to get size file for size change detection")
+		}
+		if err = cp.watchman.AddFile(newFile); err != nil {
+			klog.Error("failed to watch device size fiel for changes")
+		}
+	}
+}
+
+func (cp *sysfsProbe) listenSizeChanges() {
+	go func() {
+		events, errs := cp.watchman.Start()
+		defer cp.watchman.Stop()
+		for {
+			select {
+			case event := <-events:
+				fmt.Println(event)
+			case err := <-errs:
+				fmt.Println(err)
+			}
+		}
+	}()
 }
