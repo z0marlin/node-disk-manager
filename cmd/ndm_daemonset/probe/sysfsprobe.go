@@ -207,7 +207,7 @@ func (cp *sysfsProbe) listenSizeChanges() {
 				}
 				if len(devices) > 0 {
 					controller.EventMessageChannel <- controller.EventMessage{
-						Action:          string(MountEA),
+						Action:          string(ChangeEA),
 						Devices:         devices,
 						RequestedProbes: requestedProbes,
 					}

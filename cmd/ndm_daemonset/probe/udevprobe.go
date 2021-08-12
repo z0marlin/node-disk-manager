@@ -346,7 +346,7 @@ func (up *udevProbe) listen() {
 			probeEvent.addBlockDeviceEvent(msg)
 		case string(DetachEA):
 			probeEvent.deleteBlockDeviceEvent(msg)
-		case string(MountEA):
+		case string(ChangeEA):
 			probeEvent.changeBlockDeviceEvent(msg)
 		}
 	}
