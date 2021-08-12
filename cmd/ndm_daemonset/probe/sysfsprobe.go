@@ -194,10 +194,25 @@ func (cp *sysfsProbe) listenSizeChanges() {
 	go func() {
 		events, errs := cp.watchman.Start()
 		defer cp.watchman.Stop()
+		requestedProbes := []string{sysfsProbeName}
 		for {
 			select {
 			case event := <-events:
 				fmt.Println(event)
+				devices := make([]*blockdevice.BlockDevice, 0)
+				for _, file := range event.Files() {
+					bd := new(blockdevice.BlockDevice)
+					bd.DevPath = file.GetTag()
+					devices = append(devices, bd)
+				}
+				if len(devices) > 0 {
+					controller.EventMessageChannel <- controller.EventMessage{
+						Action:          string(MountEA),
+						Devices:         devices,
+						RequestedProbes: requestedProbes,
+					}
+				}
+
 			case err := <-errs:
 				fmt.Println(err)
 			}
