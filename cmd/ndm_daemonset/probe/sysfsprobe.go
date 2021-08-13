@@ -99,15 +99,13 @@ func (cp *sysfsProbe) FillBlockDeviceDetails(blockDevice *blockdevice.BlockDevic
 		return
 	}
 
-	if blockDevice.Capacity.Storage == 0 {
-		capacity, err := sysFsDevice.GetCapacityInBytes()
-		if err != nil {
-			klog.Warningf("unable to get capacity for device: %s, err: %v", blockDevice.DevPath, err)
-		}
-		blockDevice.Capacity.Storage = uint64(capacity)
-		klog.V(4).Infof("blockdevice path: %s capacity :%d filled by sysfs probe.",
-			blockDevice.DevPath, blockDevice.Capacity.Storage)
+	capacity, err := sysFsDevice.GetCapacityInBytes()
+	if err != nil {
+		klog.Warningf("unable to get capacity for device: %s, err: %v", blockDevice.DevPath, err)
 	}
+	blockDevice.Capacity.Storage = uint64(capacity)
+	klog.V(4).Infof("blockdevice path: %s capacity :%d filled by sysfs probe.",
+		blockDevice.DevPath, blockDevice.Capacity.Storage)
 
 	// If the blockdevice is a partition, we will use its parent disk to get block size, hw
 	// sector size and drive type.
@@ -198,7 +196,7 @@ func (cp *sysfsProbe) listenSizeChanges() {
 		for {
 			select {
 			case event := <-events:
-				fmt.Println(event)
+				klog.V(4).Info("size change event received")
 				devices := make([]*blockdevice.BlockDevice, 0)
 				for _, file := range event.Files() {
 					bd := new(blockdevice.BlockDevice)
