@@ -92,9 +92,16 @@ func NewFile(fileName string, opts ...NewFileOpt) (*File, error) {
 		f.reader = ReadFile
 	}
 
+	// read initial file data
+	openFile, err := os.Open(f.fileName)
 	if err != nil {
 		return nil, err
 	}
+	data, err := f.reader(openFile)
+	if err != nil {
+		return nil, err
+	}
+	f.fileData = data
 
 	return &f, nil
 }
@@ -162,6 +169,7 @@ func (w *Watchman) publishChanges() {
 			w.errChan <- err
 		} else if !bytes.Equal(data, f.fileData) {
 			event.files = append(event.files, f)
+			f.fileData = data
 		}
 		openFile.Close()
 	}
