@@ -192,7 +192,8 @@ func (mp *mountProbe) newMountTable() (*libmount.MountTab, error) {
 		libmount.WithDenyFilter(libmount.SourceFilter("overlay")),
 		libmount.WithDenyFilter(libmount.TargetContainsFilter("/var/lib/kubelet/pod")),
 		libmount.WithDenyFilter(libmount.TargetContainsFilter("/var/lib/docker")),
-		libmount.WithDenyFilter(libmount.TargetContainsFilter("/run/docker")))
+		libmount.WithDenyFilter(libmount.TargetContainsFilter("/run/docker")),
+		libmount.WithDenyFilter(libmount.TargetContainsFilter("/run/containerd")))
 }
 
 func (mp *mountProbe) processDiff(diff libmount.MountTabDiff) {
@@ -203,7 +204,10 @@ func (mp *mountProbe) processDiff(diff libmount.MountTabDiff) {
 		bd.DevPath = dev
 		devices = append(devices, bd)
 	}
-
+	if len(devices) == 0 {
+		return
+	}
+	klog.V(4).Infof("change detected in mounts file. No. of devices affected : %d", len(devices))
 	mp.destination <- controller.EventMessage{
 		Action:          string(ChangeEA),
 		Devices:         devices,
