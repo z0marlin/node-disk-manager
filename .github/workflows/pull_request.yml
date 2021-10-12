@@ -66,9 +66,63 @@ jobs:
       - name: Upload Coverage Report
         uses: codecov/codecov-action@v1
 
+  check-deps:
+    runs-on: ubuntu-latest
+    outputs:
+      deps-changed: ${{steps.check-deps.outputs.deps-changed}}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 2
+
+      - id: check-deps
+        name: Check deps
+        run: |
+          git diff --quiet HEAD~1 HEAD -- build/base || echo "::set-output name=deps-changed::true"
+
+  base-image:
+    runs-on: ubuntu-latest
+    needs: check-deps
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+        if: needs.check-deps.outputs.deps-changed
+        with:
+          platforms: all
+
+      - name: Set up Docker Buildx
+        id: buildx
+        if: success()
+        uses: docker/setup-buildx-action@v1
+        with:
+          version: v0.5.1
+
+      - name: Build base image
+        if: success()
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./build/base/Dockerfile
+          platforms: linux/amd64, linux/arm64, linux/arm/v7, linux/ppc64le
+          push: false
+          outputs: type=docker,dest=/tmp/node-disk-manager-base.tar
+          tags: |
+            openebs/node-disk-manager-base:ci
+
+      - name: Upload Artifact
+        if: success()
+        uses: actions/upload-artifact@v2
+        with:
+          name: node-disk-manager-base
+          path: /tmp/node-disk-manager-base.tar
+
   ndm-daemonset:
     runs-on: ubuntu-latest
-    needs: ['lint', 'unit-test']
+    needs: ['lint', 'unit-test', 'base-image']
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -96,7 +150,7 @@ jobs:
 
   ndm-exporter:
     runs-on: ubuntu-latest
-    needs: ['lint', 'unit-test']
+    needs: ['lint', 'unit-test', 'base-image']
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -124,7 +178,7 @@ jobs:
 
   ndm-operator:
     runs-on: ubuntu-latest
-    needs: ['lint', 'unit-test']
+    needs: ['lint', 'unit-test', 'base-image']
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -154,7 +208,7 @@ jobs:
     runs-on: ubuntu-latest
     # ndm exporter is not needed here as the integration tests do not use exporter
     # since the multiplatform images are not used for testing, the image will be rebuilt and then used
-    # needs: ['ndm-daemonset', 'ndm-operator']
+    needs: ['base-image']
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -165,14 +219,24 @@ jobs:
           minikube version: v1.15.0
           kubernetes version: 1.18.0
 
-      - name: Install Dependencies
-        run: make install-dep
-
       - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@v1
         with:
           version: v0.5.1
+
+      - name: Download artifact
+        uses: actions/download-artifact@v2
+        if: needs.check-deps.outputs.deps-changed
+        with:
+          name: node-disk-manager-base
+          path: /tmp
+
+      - name: Load base image from tar
+        if: needs.check-deps.outputs.deps-changed
+        run: |
+          docker load --input /tmp/node-disk-manager-base.tar
+          docker image ls -a
 
       - name: Build Node Disk Manager
         uses: docker/build-push-action@v2
